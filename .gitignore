@@ -126,6 +126,10 @@ venv.bak/
 dmypy.json
 
 # Pyre type checker
+.png
+.jpg
+.npy
+.pth
 .pyre/
 .idea/
 weights/
