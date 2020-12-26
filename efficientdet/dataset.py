@@ -38,7 +38,7 @@ class CocoDataset(Dataset):
         return len(self.image_ids)
 
     def __getitem__(self, idx):
-
+        # change this to load numpy array
         img = self.load_image(idx)
         annot = self.load_annotations(idx)
         sample = {'img': img, 'annot': annot}
@@ -49,10 +49,10 @@ class CocoDataset(Dataset):
     def load_image(self, image_index):
         image_info = self.coco.loadImgs(self.image_ids[image_index])[0]
         path = os.path.join(self.root_dir, self.set_name, image_info['file_name'])
-        img = cv2.imread(path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        return img.astype(np.float32) / 255.
+        # img = cv2.imread(path)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        out = np.array(np.load(path), dtype=np.float32)
+        return out
 
     def load_annotations(self, image_index):
         # get ground truth annotations
@@ -127,8 +127,8 @@ class Resizer(object):
 
         image = cv2.resize(image, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
 
-        new_image = np.zeros((self.img_size, self.img_size, 3))
-        new_image[0:resized_height, 0:resized_width] = image
+        new_image = np.zeros((self.img_size, self.img_size, 1))
+        new_image[0:resized_height, 0:resized_width, 0] = image
 
         annots[:, :4] *= scale
 

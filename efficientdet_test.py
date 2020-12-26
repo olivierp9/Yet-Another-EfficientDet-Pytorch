@@ -16,7 +16,7 @@ from efficientdet.utils import BBoxTransform, ClipBoxes
 from utils.utils import preprocess, invert_affine, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
 
 compound_coef = 0
-force_input_size = None  # set None to use default size
+force_input_size = 512 # set None to use default size
 img_path = 'test/img.png'
 
 # replace this part with your project's anchor config

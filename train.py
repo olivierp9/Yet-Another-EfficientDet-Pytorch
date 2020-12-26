@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm.autonotebook import tqdm
 
-from backbone import EfficientDetBackbone
+from backbone import EfficientDetBackbone, TestBackbone
 from efficientdet.dataset import CocoDataset, Resizer, Normalizer, Augmenter, collater
 from efficientdet.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
@@ -45,7 +45,7 @@ def get_args():
                                                                    'suggest using \'admaw\' until the'
                                                                    ' very final stage then switch to \'sgd\'')
     parser.add_argument('--num_epochs', type=int, default=500)
-    parser.add_argument('--val_interval', type=int, default=1, help='Number of epoches between valing phases')
+    parser.add_argument('--val_interval', type=int, default=1, help='Number of epochs between valing phases')
     parser.add_argument('--save_interval', type=int, default=500, help='Number of steps between saving')
     parser.add_argument('--es_min_delta', type=float, default=0.0,
                         help='Early stopping\'s parameter: minimum change loss to qualify as an improvement')

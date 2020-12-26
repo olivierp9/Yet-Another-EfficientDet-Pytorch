@@ -64,9 +64,11 @@ class EfficientDetBackbone(nn.Module):
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor):
         max_size = inputs.shape[-1]
-
+        shapes = list(inputs.shape)
+        shapes[1] = 3
+        inputs = inputs.expand(shapes)
         _, p3, p4, p5 = self.backbone_net(inputs)
 
         features = (p3, p4, p5)
@@ -85,3 +87,21 @@ class EfficientDetBackbone(nn.Module):
             print(ret)
         except RuntimeError as e:
             print('Ignoring ' + str(e) + '"')
+
+
+class TestBackbone(nn.Module):
+    def __init__(self, num_classes=80, compound_coef=0, load_weights=False, **kwargs):
+        super(TestBackbone, self).__init__()
+
+        self.test = EfficientDetBackbone(num_classes, compound_coef, load_weights, **kwargs)
+        self.conv = nn.Conv2d(1, 3, 3, 1, 1)
+
+    def forward(self, inputs):
+
+        x = self.conv(inputs)
+        features, regression, classification, anchors = self.test(x)
+
+        return features, regression, classification, anchors
+
+    def init_backbone(self, path):
+        self.test.init_backbone(path)
