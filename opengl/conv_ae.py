@@ -131,12 +131,13 @@ class ConvAutoencoder(nn.Module):
 
 # define the NN architecture
 class ConvAutoencoder3(nn.Module):
-    def __init__(self, bn=False):
+    def __init__(self, size=3, bn=False):
         super(ConvAutoencoder3, self).__init__()
         ## encoder layers ##
         # conv layer (depth from 3 --> 16), 3x3 kernels
+        self.activation = HardMish()
         self.bn = bn
-        self.conv11 = nn.Conv2d(1, 128, 3, stride=1)
+        self.conv11 = nn.Conv2d(size, 128, 3, stride=1)
         self.conv12 = nn.Conv2d(128, 128, 3, stride=2)
         self.conv1_bn = nn.BatchNorm2d(128)
         self.conv21 = nn.Conv2d(128, 256, 3, stride=1)
@@ -180,40 +181,48 @@ class ConvAutoencoder3(nn.Module):
         self.t_conv42 = nn.Conv2d(128, 128, 3, padding=1)
         self.t_conv4_bn = nn.BatchNorm2d(1)
         self.t_conv51 = nn.Conv2d(128, 128, 3, padding=1)
-        self.t_conv52 = nn.Conv2d(128, 1, 3, padding=1)
+        self.t_conv52 = nn.Conv2d(128, size, 3, padding=1)
 
     def forward(self, x):
         # encode
         # add hidden layers with relu activation function
         # and maxpooling after
-        activation = HardMish()
 
-        x = activation(self.conv11(x))
-        x = activation(self.conv12(x))
+        x = self.encode(x)
+
+        x = self.decode(x)
+
+        return x
+
+    def encode(self, x):
+        x = self.activation(self.conv11(x))
+        x = self.activation(self.conv12(x))
         if self.bn:
             x = self.conv1_bn(x)
         # add second hidden layer
-        x = activation(self.conv21(x))
-        x = activation(self.conv22(x))
+        x = self.activation(self.conv21(x))
+        x = self.activation(self.conv22(x))
         if self.bn:
             x = self.conv2_bn(x)
         # add second hidden layer
-        x = activation(self.conv31(x))
-        x = activation(self.conv32(x))
+        x = self.activation(self.conv31(x))
+        x = self.activation(self.conv32(x))
         if self.bn:
             x = self.conv3_bn(x)
         # add second hidden layer
-        x = activation(self.conv41(x))
-        x = activation(self.conv42(x))
+        x = self.activation(self.conv41(x))
+        x = self.activation(self.conv42(x))
         if self.bn:
             x = self.conv4_bn(x)
 
         x = x.view(-1, 12800)
-        x = activation(self.dense_enc(x))
+        x = self.activation(self.dense_enc(x))
         if self.bn:
             x = self.dense_enc_bn(x)
+        return x
 
-        x = activation(self.dense(x))
+    def decode(self, x):
+        x = self.activation(self.dense(x))
         #
         # x = F.relu(x)
         x = x.view(-1, self._num_filters[0], self._layer_dimensions[0][0], self._layer_dimensions[0][1])
@@ -222,39 +231,37 @@ class ConvAutoencoder3(nn.Module):
         if self.bn:
             x = self.dense_bn(x)
 
-        x = activation(self.t_conv11(x))
-        x = activation(self.t_conv12(x))
+        x = self.activation(self.t_conv11(x))
+        x = self.activation(self.t_conv12(x))
         if self.bn:
-            x =self.t_conv1_bn(x)
+            x = self.t_conv1_bn(x)
 
         x = nn.functional.interpolate(x, self._layer_dimensions[1])
 
-        x = activation(self.t_conv21(x))
-        x = activation(self.t_conv22(x))
+        x = self.activation(self.t_conv21(x))
+        x = self.activation(self.t_conv22(x))
         if self.bn:
-            x =self.t_conv2_bn(x)
+            x = self.t_conv2_bn(x)
 
         x = nn.functional.interpolate(x, self._layer_dimensions[2])
 
-        x = activation(self.t_conv31(x))
-        x = activation(self.t_conv32(x))
+        x = self.activation(self.t_conv31(x))
+        x = self.activation(self.t_conv32(x))
         if self.bn:
-            x =self.t_conv3_bn(x)
+            x = self.t_conv3_bn(x)
 
         x = nn.functional.interpolate(x, self._layer_dimensions[3])
 
-        x = activation(self.t_conv41(x))
-        x = activation(self.t_conv42(x))
+        x = self.activation(self.t_conv41(x))
+        x = self.activation(self.t_conv42(x))
         if self.bn:
-            x =self.t_conv4_bn(x)
+            x = self.t_conv4_bn(x)
 
         x = nn.functional.interpolate(x, [128, 128])
 
-        x = activation(self.t_conv51(x))
+        x = self.activation(self.t_conv51(x))
         x = sigmoid(self.t_conv52(x))
-
         return x
-
 
 
 # define the NN architecture
@@ -416,38 +423,41 @@ class ConvAutoencoder32(nn.Module):
         self.t_conv51 = nn.Conv2d(64, 64, 3, padding=1)
         self.t_conv52 = nn.Conv2d(64, 1, 3, padding=1)
 
+        self.activation = HardMish()
+
+
     def forward(self, x):
         # encode
         # add hidden layers with relu activation function
         # and maxpooling after
         activation = HardMish()
 
-        x = activation(self.conv11(x))
-        x = activation(self.conv12(x))
+        x = self.activation(self.conv11(x))
+        x = self.activation(self.conv12(x))
         if self.bn:
             x = self.conv1_bn(x)
         # add second hidden layer
-        x = activation(self.conv21(x))
-        x = activation(self.conv22(x))
+        x = self.activation(self.conv21(x))
+        x = self.activation(self.conv22(x))
         if self.bn:
             x = self.conv2_bn(x)
         # add second hidden layer
-        x = activation(self.conv31(x))
-        x = activation(self.conv32(x))
+        x = self.activation(self.conv31(x))
+        x = self.activation(self.conv32(x))
         if self.bn:
             x = self.conv3_bn(x)
         # add second hidden layer
-        x = activation(self.conv41(x))
-        x = activation(self.conv42(x))
+        x = self.activation(self.conv41(x))
+        x = self.activation(self.conv42(x))
         if self.bn:
             x = self.conv4_bn(x)
 
         x = x.view(-1, 256*5*5)
-        x = activation(self.dense_enc(x))
+        x = self.activation(self.dense_enc(x))
         if self.bn:
             x = self.dense_enc_bn(x)
 
-        x = activation(self.dense(x))
+        x = self.activation(self.dense(x))
         #
         # x = F.relu(x)
         x = x.view(-1, self._num_filters[0], self._layer_dimensions[0][0], self._layer_dimensions[0][1])
@@ -456,35 +466,35 @@ class ConvAutoencoder32(nn.Module):
         if self.bn:
             x = self.dense_bn(x)
 
-        x = activation(self.t_conv11(x))
-        x = activation(self.t_conv12(x))
+        x = self.activation(self.t_conv11(x))
+        x = self.activation(self.t_conv12(x))
         if self.bn:
             x =self.t_conv1_bn(x)
 
         x = nn.functional.interpolate(x, self._layer_dimensions[1])
 
-        x = activation(self.t_conv21(x))
-        x = activation(self.t_conv22(x))
+        x = self.activation(self.t_conv21(x))
+        x = self.activation(self.t_conv22(x))
         if self.bn:
             x =self.t_conv2_bn(x)
 
         x = nn.functional.interpolate(x, self._layer_dimensions[2])
 
-        x = activation(self.t_conv31(x))
-        x = activation(self.t_conv32(x))
+        x = self.activation(self.t_conv31(x))
+        x = self.activation(self.t_conv32(x))
         if self.bn:
             x =self.t_conv3_bn(x)
 
         x = nn.functional.interpolate(x, self._layer_dimensions[3])
 
-        x = activation(self.t_conv41(x))
-        x = activation(self.t_conv42(x))
+        x = self.activation(self.t_conv41(x))
+        x = self.activation(self.t_conv42(x))
         if self.bn:
             x =self.t_conv4_bn(x)
 
         x = nn.functional.interpolate(x, [128, 128])
 
-        x = activation(self.t_conv51(x))
+        x = self.activation(self.t_conv51(x))
         x = sigmoid(self.t_conv52(x))
 
         return x

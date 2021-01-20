@@ -66,7 +66,7 @@ def aspectaware_resize_padding(image, width, height, interpolation=None, means=N
 
 
 def preprocess(*image_path, max_size=512, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
-    idx = 49
+    idx = 420
     ori_imgs = [np.load(img_path) for img_path in image_path[0][int(idx):int(idx+1)]]
     normalized_imgs = [(img - mean) / std for img in ori_imgs]
     imgs_meta = [aspectaware_resize_padding(img, max_size, max_size,

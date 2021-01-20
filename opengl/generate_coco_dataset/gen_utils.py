@@ -15,12 +15,83 @@ import uuid
 from pycococreatortools import pycococreatortools
 import matplotlib.pyplot as plt
 import json
-
+import gzip
 
 def opengl_error_check():
     error = glGetError()
     if error != GL_NO_ERROR:
         print("OPENGL_ERROR: ", error)
+
+
+class ShadersNormal:
+    @staticmethod
+    def vertex_src() -> str:
+        return """
+        # version 330
+        layout(location = 0) in vec3 a_position;
+        layout(location = 1) in vec3 a_normal;
+        uniform mat4 model;
+        uniform mat4 projection;
+        uniform mat4 view;
+        uniform vec3 pos;
+        uniform vec3 up;
+        out vec3 v_normal;
+        out vec3 v_pos;
+        out vec3 v_up;
+        void main()
+        {
+            gl_Position = projection * view * model * vec4(a_position, 1.0);
+            v_normal = a_normal;
+            v_pos = pos;
+            v_up = up;
+        }
+        """
+
+    @staticmethod
+    def fragment_src() -> str:
+        return """
+        # version 330
+        in vec3 v_normal;
+        in vec3 v_pos;
+        in vec3 v_up;
+        out vec4 out_color;
+        float near = 0.1;
+        float far = 2;
+
+        float LinearizeDepth(float depth) 
+        {
+            return depth;
+            //return near * far / (far + depth * (near - far));
+            // the good one is linear in distance
+            // return (depth-near)/(far-near);
+            // or maybe only return the real depth? does not change a lot because we normalize
+            //return depth;
+            //float z = depth * 2.0 - 1.0; // back to NDC 
+            //return (2.0 * near * far) / (far + near - z * (far - near));	
+        }
+
+        void main()
+        {
+            vec3 test = v_normal;
+            //test = normalize(test);
+            vec3 tmp = v_normal;
+            vec3 x_axis = normalize(v_pos);
+            vec3 y_axis = normalize(v_up);
+            vec3 z_axis = normalize(cross(v_pos, v_up));
+            test.x = dot(x_axis, tmp);
+            test.y = dot(y_axis, tmp);
+            test.z = dot(z_axis, tmp);
+            test = normalize(test);
+            //test = (test+1.0)/2.0;
+            test = abs(test);
+            
+            
+            //out_color = vec4(vec3(test.x), 1.0);
+            //out_color = vec4(vec3(test.y), 1.0);
+            //out_color = vec4(x_axis, 1.0);
+            out_color = vec4(test, 1.0);
+        }
+        """
 
 
 class Shaders:
@@ -53,7 +124,8 @@ class Shaders:
         
         float LinearizeDepth(float depth) 
         {
-            return near * far / (far + depth * (near - far));
+            return depth;
+            //return near * far / (far + depth * (near - far));
             // the good one is linear in distance
             // return (depth-near)/(far-near);
             // or maybe only return the real depth? does not change a lot because we normalize
@@ -94,7 +166,8 @@ float far = 10;
 
 float LinearizeDepth(float depth) 
 {
-    return near * far / (far + depth * (near - far));
+    return depth;
+    //return near * far / (far + depth * (near - far));
     //return depth;
     //float z = depth * 2.0 - 1.0; // back to NDC 
     //return (2.0 * near * far) / (far + near - z * (far - near));	
@@ -113,11 +186,12 @@ MESH_PATH = "/home/olivier/Desktop/shape_net/meshes.txt"
 
 
 class SceneRender:
-    def __init__(self, size: int):
+    def __init__(self, size: int, normal_map: bool=False):
         # TODO add item to identify as input
         self.size = size
         self.vertices = np.array([])
         self.indices = np.array([])
+        self.normal_map = normal_map
 
         # initializing glfw library
         if not glfw.init():
@@ -149,25 +223,35 @@ class SceneRender:
 
         # set the callback function for window resize
         glfw.set_window_size_callback(window, window_resize)
-        opengl_error_check()
         # make the context current
         glfw.make_context_current(window)
-        opengl_error_check()
-        print(Shaders.vertex_src())
-        print(Shaders.fragment_src())
 
-        self.shader = compileProgram(compileShader(vertex_src, GL_VERTEX_SHADER),
-                                compileShader(fragment_src, GL_FRAGMENT_SHADER))
-        opengl_error_check()
-    # def add_mesh(self, mesh_path: str, pose: np.ndarray, rotation: np.ndarray):
+        self.compile_shader(self.normal_map)
 
-    def add_bunny_mesh(self, position, rotation):
+    def compile_shader(self, normal_map: bool = False):
+        if normal_map:
+            self.shader = compileProgram(compileShader(ShadersNormal.vertex_src(), GL_VERTEX_SHADER),
+                                         compileShader(ShadersNormal.fragment_src(), GL_FRAGMENT_SHADER))
+        else:
+            self.shader = compileProgram(compileShader(vertex_src, GL_VERTEX_SHADER),
+                                         compileShader(fragment_src, GL_FRAGMENT_SHADER))
+
+    def add_bunny_mesh(self, position: np.ndarray = np.zeros(3), rotation: np.ndarray = np.zeros(3)) -> None:
         mesh = o3d.io.read_triangle_mesh("mesh/mini_bunny.obj")
         R = mesh.get_rotation_matrix_from_xyz(rotation)
         mesh.rotate(R, center=(0, 0, 0))
         mesh.translate(position)
-
         verts = np.asarray(mesh.vertices)
+
+        if self.normal_map:
+            mesh.compute_triangle_normals()
+            norms = np.asarray(mesh.vertex_normals)
+            # norms +=1.0
+            # norms /= 2.0
+            # norms = abs(norms)
+            # norms_sum = np.sum(np.abs(norms), axis=1)
+            verts = np.concatenate((verts, norms), axis=1)
+
         max_idx = 0
         if len(self.indices)>0:
             max_idx = np.max(self.indices)+1
@@ -175,16 +259,23 @@ class SceneRender:
 
         self.vertices = np.append(self.vertices, np.array(verts.flatten(), dtype=np.float32))
         self.indices = np.append(self.indices, np.array(triangs.flatten(), dtype=np.uint32))
-        return
 
-    def add_random_mesh(self, radius=1):
-        mesh_path = self.meshes[np.random.randint(0, self.meshes_len)]
+    def add_random_mesh(self, pos, rot, mesh_idx=-1):
+        if mesh_idx <0:
+            mesh_idx = np.random.randint(0, self.meshes_len)
+        mesh_path = self.meshes[mesh_idx]
         mesh = o3d.io.read_triangle_mesh(mesh_path.replace("model_normalized_vhacd.obj", "model_normalized.obj"))
-        pos = np.random.uniform(0,1,3)
-        pos = pos/np.linalg.norm(pos)
+        R = mesh.get_rotation_matrix_from_xyz(rot)
+        mesh.rotate(R, center=(0, 0, 0))
         mesh.translate(pos)
+
         # mesh = o3d.io.read_triangle_mesh("mesh/mini_bunny.obj")
         verts = np.asarray(mesh.vertices)
+
+        if self.normal_map:
+            mesh.compute_triangle_normals()
+            norms = np.asarray(mesh.vertex_normals)
+            verts = np.concatenate((verts, norms), axis=1)
 
         # print(len(self.vertices))
         # print(len(self.indices))
@@ -210,15 +301,20 @@ class SceneRender:
         VBO = glGenBuffers(1)
         glBindBuffer(GL_ARRAY_BUFFER, VBO)
         glBufferData(GL_ARRAY_BUFFER, self.vertices.nbytes, self.vertices, GL_STATIC_DRAW)
-        opengl_error_check()
         # Element Buffer Object
         EBO = glGenBuffers(1)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, self.indices.nbytes, self.indices, GL_STATIC_DRAW)
         opengl_error_check()
-        glEnableVertexAttribArray(0)
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, self.vertices.itemsize * 3, ctypes.c_void_p(0))
-        opengl_error_check()
+        if self.normal_map:
+            glEnableVertexAttribArray(0)
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, self.vertices.itemsize * 6, ctypes.c_void_p(0))
+            glEnableVertexAttribArray(1)
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, self.vertices.itemsize * 6, ctypes.c_void_p(12))
+        else:
+            glEnableVertexAttribArray(0)
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, self.vertices.itemsize * 3, ctypes.c_void_p(0))
+
         glUseProgram(self.shader)
         glClearColor(0, 0, 0, 1)
         glEnable(GL_DEPTH_TEST)
@@ -228,17 +324,17 @@ class SceneRender:
         self.model_loc = glGetUniformLocation(self.shader, "model")
         self.proj_loc = glGetUniformLocation(self.shader, "projection")
         self.view_loc = glGetUniformLocation(self.shader, "view")
+        self.pos_loc = glGetUniformLocation(self.shader, "pos")
+        self.up_loc = glGetUniformLocation(self.shader, "up")
 
         opengl_error_check()
 
     def render(self, position: np.ndarray, up: np.ndarray, out_size=0, debug=False) -> None:
-
         glfw.poll_events()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         view = pyrr.matrix44.create_look_at(pyrr.Vector3(position), pyrr.Vector3([0.0, 0.0, 0.0]),
                                             pyrr.Vector3(up))
-        opengl_error_check()
 
         projection = pyrr.matrix44.create_perspective_projection_matrix(45, 720 / 720, 0.1, 10)
         translation = pyrr.matrix44.create_from_translation(pyrr.Vector3([0, 0, 0]))
@@ -246,8 +342,15 @@ class SceneRender:
         glUniformMatrix4fv(self.proj_loc, 1, GL_FALSE, projection)
         glUniformMatrix4fv(self.model_loc, 1, GL_FALSE, translation)
         glUniformMatrix4fv(self.view_loc, 1, GL_FALSE, view)
+        if self.normal_map:
+            # gl_pos = np.array(position, dtype=np.float32)
+            # gl_up = np.array(up, dtype=np.float32)
+            glUniform3fv(self.pos_loc, 1, position)
+            glUniform3fv(self.up_loc, 1, up)
 
         glDrawElements(GL_TRIANGLES, len(self.indices), GL_UNSIGNED_INT, None)
+
+        # glfw.swap_buffers(self.window)
 
     @staticmethod
     def get_ups_from_point(normal: np.ndarray, increment: float):
@@ -285,7 +388,7 @@ class SceneRender:
         pos = np.random.uniform(0, 1, 3)
         pos *= radius / np.linalg.norm(pos)
 
-        rot = np.random.uniform(0, 2 * pi)
+        rot = np.random.uniform(0, 2 * pi, 3)
         return pos, rot
 
     def get_bbox(self, img):
@@ -303,19 +406,19 @@ class SceneRender:
         return col_low, row_low, col_high, row_high
 
     def get_image_and_bbox(self, debug: bool = False, boxes: bool = False):
-        out = glReadPixels(0, 0, self.size, self.size, GL_DEPTH_COMPONENT, GL_FLOAT)
+        if self.normal_map:
+            # glfw.swap_buffers(self.window)
+            out = glReadPixels(0, 0, self.size, self.size,  GL_RGB, GL_FLOAT)
+            rgb_flipped = np.frombuffer(out, dtype=np.float32).reshape(self.size, self.size, 3)
+        else:
+            out = glReadPixels(0, 0, self.size, self.size, GL_DEPTH_COMPONENT, GL_FLOAT)
+            rgb_flipped = np.frombuffer(out, dtype=np.float32).reshape(self.size, self.size, 1)
+            rgb_flipped[rgb_flipped == 1] = 0
 
-        # glfw.swap_buffers(self.window)
-
-        rgb_flipped = np.frombuffer(out, dtype=np.float32).reshape(self.size, self.size, 1)
-
-        min = np.min(rgb_flipped)
-        max = np.max(rgb_flipped)
-        if max == min:
+        if np.sum(rgb_flipped)==0:
             print("Error nothing to see!")
             return None
 
-        rgb_flipped[rgb_flipped == 1] = 0
 
         tmp_flipped = rgb_flipped  # verify just in case
 
@@ -336,7 +439,7 @@ class SceneRender:
 
     def mult_generate_exemples(self, max_bunnies: int=5, number_of_views: int=10, max_number_of_random_object:int = 5,
                           threshold: float=0.25, radius: float=1.0):
-        val = 50
+        val = 5
         out_boxes = np.zeros((val*number_of_views, max_bunnies, 4))
         out_images = np.zeros((val*number_of_views, self.size, self.size, 1))
 
@@ -352,6 +455,119 @@ class SceneRender:
             out_images[int(i*number_of_views):int((i+1)*number_of_views), :, :, :] = images
             print(i)
         return out_images, out_boxes
+
+    def generate_ae_views(self, radius: float = 0.7, random_=False):
+        self.clear_meshes()
+        self.add_bunny_mesh()
+        self.draw_mesh()
+
+        views = hinter_sampling(2562, 1)[0]
+        num_views = len(views)
+
+        now_a = time.time()
+        saving_size = self.size
+        num_ex = 2562*36//4
+        l = list(range(num_ex))
+        import random
+        if random_:
+            num_ex = 20000
+            random_counter = 0
+            random_idx = random.sample(l, num_ex)
+        test = np.zeros((num_ex, saving_size, saving_size, 3))
+        views_coutner = 0
+        part_c = 0
+        for i in range(num_views):
+            pos = np.array(views[i, :])
+
+            if i == 1385 or i == 1433:
+                tmp_pos = np.array([pos[1], pos[0], pos[2]])
+                ups = self.get_ups_from_point(-2 * tmp_pos, 2 * pi / 36)
+                for j in range(ups.shape[0]):
+                    ups[j, 0], ups[j, 1], ups[j, 2] = ups[j, 1], ups[j, 0], ups[j, 2]
+            else:
+                ups = self.get_ups_from_point(-2 * pos, 2 * pi / 36)
+
+            for up in ups:
+                if random_:
+                    if views_coutner in random_idx:
+                        self.render(pos, up)
+                        rgb_flipped, _ = self.get_image_and_bbox()
+                        test[random_counter, :] = rgb_flipped
+                        random_counter += 1
+                else:
+                    self.render(pos, up)
+                    rgb_flipped, _ = self.get_image_and_bbox()
+                    test[views_coutner, :] = rgb_flipped
+                views_coutner += 1
+                if views_coutner == num_ex:
+                    views_coutner = 0
+                    part_c += 1
+                    f = gzip.GzipFile(f"part{part_c}.npy.gz", "w")
+                    np.save(file=f, arr=test)
+                    f.close()
+
+        now_b = time.time()
+        print(now_b-now_a)
+        return test
+
+    def generate_one_test_example(self, max_bunnies: int = 3, max_number_of_random_object: int = 3):
+        num_bunnies = np.random.randint(1, max_bunnies+1)  # +1 because high is exclusive
+        bunnies_pos = np.zeros((num_bunnies, 3))
+        bunnies_rot = np.zeros((num_bunnies, 3))
+
+        num_rand_object = np.random.randint(1, max_number_of_random_object+1)
+        obj_mesh_idx = np.random.randint(0, self.meshes_len, num_rand_object)
+        obj_pos = np.zeros((num_rand_object, 3))
+        obj_rot = np.zeros((num_rand_object, 3))
+
+        for obj_idx in range(num_rand_object):
+            obj_pos[obj_idx, :], obj_rot[obj_idx, :] = self.generate_transform()
+
+        # use fcl
+        for bunny_idx in range(num_bunnies):
+            not_far_enough = True
+            while not_far_enough:
+                not_far_enough = False
+                bunnies_pos[bunny_idx], bunnies_rot[bunny_idx] = self.generate_transform()
+                for j in range(bunny_idx):
+                    if np.linalg.norm(bunnies_pos[bunny_idx]-bunnies_pos[j]) < 0.3:
+                        not_far_enough = True
+
+        self.clear_meshes()
+
+        for obj_idx in range(num_rand_object):
+            self.add_random_mesh(obj_pos[obj_idx, :], obj_rot[obj_idx, :], obj_mesh_idx[obj_idx])  # use pose and rot
+
+        for bunny_idx in range(num_bunnies):
+            self.add_bunny_mesh(bunnies_pos[bunny_idx, :], bunnies_rot[bunny_idx, :])
+
+        self.compile_shader(False)
+        self.normal_map = False
+        self.draw_mesh()
+        self.render(np.array([4, 0, 0]), np.array([0, 0, 1]))
+
+        depth_map, _ = self.get_image_and_bbox()
+
+        self.clear_meshes()
+
+        self.compile_shader(True)
+        self.normal_map = True
+
+        for obj_idx in range(num_rand_object):
+            self.add_random_mesh(obj_pos[obj_idx, :], obj_rot[obj_idx, :], obj_mesh_idx[obj_idx])  # use pose and rot
+
+        for bunny_idx in range(num_bunnies):
+            self.add_bunny_mesh(bunnies_pos[bunny_idx, :], bunnies_rot[bunny_idx, :])
+
+        self.draw_mesh()
+
+        self.render(np.array([4, 0, 0]), np.array([0, 0, 1]))
+
+        normal_map, _ = self.get_image_and_bbox()
+        self.normal_map = False
+
+        return depth_map, normal_map
+
 
     def generate_examples(self, max_bunnies: int=5, number_of_views: int=10, max_number_of_random_object:int = 5,
                           threshold: float=0.5, radius: float=1.0):
@@ -369,7 +585,7 @@ class SceneRender:
         out_images = np.zeros((number_of_views, self.size, self.size, 1))
         out_boxes = np.zeros((number_of_views, max_bunnies, 4))
 
-        views = hinter_sampling(2562, 1)[0]  # type this shit
+        views, _ = hinter_sampling(2562, 1)  # type this shit
 
         rand_views_idx = np.random.randint(0, views.shape[0], number_of_views)
 
@@ -401,7 +617,7 @@ class SceneRender:
 
         self.clear_meshes()
         for obj_idx in range(num_rand_object):
-            self.add_random_mesh()  # use pose and rot
+            self.add_random_mesh(obj_pos[obj_idx, :], obj_rot[obj_idx, :])  # use pose and rot
 
         for bunny_idx in range(num_bunnies):
             self.add_bunny_mesh(bunnies_pos[bunny_idx, :], bunnies_rot[bunny_idx, :])
@@ -473,7 +689,7 @@ class SceneRender:
 
 if __name__ == "__main__":
     ROOT_DIR = 'opengl/train'
-    IMAGE_DIR = 'opengl/images'
+    IMAGE_DIR = '../datasets/bunny/val'
     ANNOTATION_DIR = 'opengl/annotations'
 
     INFO = {
@@ -556,7 +772,7 @@ if __name__ == "__main__":
             # norm_im = np.copy(image)
             # norm_im[non_background] = (image[non_background]-minn)/(maxx-minn)
             np.save(f"{IMAGE_DIR}/{random_name}", image)
-    with open(f'{ROOT_DIR}/instances_train.json', 'w') as output_json_file:
+    with open(f'{ROOT_DIR}/instances_val.json', 'w') as output_json_file:
         json.dump(coco_output, output_json_file)
     b = time.time()
     print(b-a)

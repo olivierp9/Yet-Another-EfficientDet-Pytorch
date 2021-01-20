@@ -16,7 +16,7 @@ if __name__ == "__main__":
     # test = 0
 
     # base_path = "/home/olivier/Desktop/Yet-Another-EfficientDet-Pytorch/datasets/bunny/train"
-    base_path = "/home/olivier/Desktop/Yet-Another-EfficientDet-Pytorch/opengl/opengl/images"
+    base_path = "/home/olivier/Desktop/Yet-Another-EfficientDet-Pytorch/datasets/bunny/train"
     image_path = [s for s in os.listdir(base_path) if s.endswith('.npy')]
     arr = np.load(f"{base_path}/{image_path[0]}")
 

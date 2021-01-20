@@ -36,7 +36,8 @@ float far = 2;
 
 float LinearizeDepth(float depth) 
 {
-    return near * far / (far + depth * (near - far));
+    return depth;
+    //return near * far / (far + depth * (near - far));
     //return depth;
     //float z = depth * 2.0 - 1.0; // back to NDC 
     //return (2.0 * near * far) / (far + near - z * (far - near));	
@@ -135,9 +136,6 @@ def get_ups_from_point(normal: np.ndarray, increment: float):
     v3y = s*normal[1]
     v3z = s*normal[2]
 
-    if v3x*v3x+v3z*v3z == 0:
-        a = 0
-
     s = 1.0/np.sqrt(v3x*v3x+v3z*v3z)
     v1x = s*v3z
     v1y = 0.0
@@ -154,7 +152,7 @@ def get_ups_from_point(normal: np.ndarray, increment: float):
         px = 1 * (v1x * cos(a) + v2x * sin(a))
         py = 1 * (v1y * cos(a) + v2y * sin(a))
         pz = 1 * (v1z * cos(a) + v2z * sin(a))
-        list_of_up.append([px,py,pz])
+        list_of_up.append([px, py, pz])
 
     return np.array(list_of_up)
 
@@ -216,18 +214,18 @@ for i in range(num_views):
         # plt.show()
         # time.sleep(0.1)
 
-max = np.max(test[test != 0])
-print(max)
+mean = np.mean(test[test != 0])
+test[test != 0] = (test[test != 0] - mean)
+
 min = np.min(test[test != 0])
 print(min)
 
 # rgb_flipped[rgb_flipped != 0] = 2 * (rgb_flipped[rgb_flipped != 0] - min) / (max - min) - 1
-test[test != 0] = (test[test != 0] - min) / (max - min)
 
-np.save("data/700mm_norm_1.npy", test[::4, :, :, :])
-np.save("data/700mm_norm_2.npy", test[1::4, :, :, :])
-np.save("data/700mm_norm_3.npy", test[2::4, :, :, :])
-np.save("data/700mm_norm_4.npy", test[3::4, :, :, :])
+np.save("data/700mm_std_1.npy", test[::4, :, :, :])
+np.save("data/700mm_std_2.npy", test[1::4, :, :, :])
+np.save("data/700mm_std_3.npy", test[2::4, :, :, :])
+np.save("data/700mm_std_4.npy", test[3::4, :, :, :])
 now_b = time.time()
 print(now_b-now_a)
 # terminate glfw, free up allocated resources

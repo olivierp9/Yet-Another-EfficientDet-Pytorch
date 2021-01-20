@@ -80,9 +80,9 @@ class BootstrappedCE(torch.nn.Module):
 
     def forward(self, input, target, it):
         if it < self.start_warm:
-            return torch.nn.functional.mse_loss(input, target), 1.0
+            return torch.nn.functional.binary_cross_entropy(input, target), 1.0
 
-        raw_loss = torch.nn.functional.mse_loss(input, target, reduction='none').view(-1)
+        raw_loss = torch.nn.functional.binary_cross_entropy(input, target, reduction='none').view(-1)
         num_pixels = raw_loss.numel()
 
         if it > self.end_warm:
