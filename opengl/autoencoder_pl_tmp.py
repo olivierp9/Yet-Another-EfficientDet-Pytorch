@@ -13,6 +13,18 @@ from custom_loader import ImageFolderAutoEncoder
 def calculate_next_layers_size(h_in, p, k, s):
     return int((h_in+2*p-(k-1)-1)/s) + 1
 
+from imgaug.augmenters import Sequential, Sometimes, CropAndPad, Multiply, Cutout, Affine, GaussianBlur
+
+seq = Sequential([
+    Sometimes(1, Affine(scale=(0.5, 3.0))),
+    Sometimes(1, CropAndPad(percent=(-0.2, 0.2))),
+    Sometimes(1, Cutout(nb_iterations=(1, 5), cval=(0, 255), squared=False, size=0.2, fill_per_channel=True)),
+    Sometimes(1, Cutout(nb_iterations=(1, 5), cval=(0, 255), squared=False, size=0.5, fill_per_channel=True,
+                          fill_mode="background")),
+    Sometimes(1, GaussianBlur(sigma=(0.0, 1.2))),
+], random_order=False)
+
+
 
 class ConvAutoencoder5Logits(pl.LightningModule):
     def __init__(self, hparams, size=3, bn=False, layers=[128,256,512,512]):
@@ -128,6 +140,7 @@ class ConvAutoencoder5Logits(pl.LightningModule):
         return x
 
     def configure_optimizers(self):
+        # self.optimizer = torch.optim.Adam(self.parameters(), self.learning_rate)
         self.optimizer = torch.optim.AdamW(self.parameters(), self.learning_rate)
         ds_len = 20224  # check in train loader?
         total_bs = self.hparams.batch_size*self.hparams.gpus
@@ -141,6 +154,7 @@ class ConvAutoencoder5Logits(pl.LightningModule):
             'interval': 'step',
         }
         return [self.optimizer], [sched]
+        # return self.optimizer
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -155,7 +169,7 @@ class ConvAutoencoder5Logits(pl.LightningModule):
         x_hat = self(x)
         val_loss, top_k = self.criterion(x_hat, y)
 
-        return {'val_loss': val_loss, 'x_hat': x_hat, 'x': x}
+        return {'val_loss': val_loss, 'x_hat': x_hat, 'x': x, 'y': y}
 
     def validation_epoch_end(
             self,
@@ -164,37 +178,49 @@ class ConvAutoencoder5Logits(pl.LightningModule):
         val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         x_hat = outputs[-1]['x_hat']
         x = outputs[-1]['x']
+        y = outputs[-1]['y']
         x_hat = torch.sigmoid(x_hat)
-        grid = torchvision.utils.make_grid(x_hat, normalize=True)
-        grid_diff = torchvision.utils.make_grid(x_hat-x, normalize=True)
-
-        self.logger.experiment.add_image('reconstruction', grid, self.current_epoch)
+        grid_input = torchvision.utils.make_grid(x, normalize=True)
+        grid_target = torchvision.utils.make_grid(y, normalize=True)
+        grid_pred = torchvision.utils.make_grid(x_hat, normalize=True)
+        grid_diff = torchvision.utils.make_grid(x_hat-y, normalize=True)
+        self.logger.experiment.add_image('input', grid_input, self.current_epoch)
+        self.logger.experiment.add_image('target', grid_target, self.current_epoch)
+        self.logger.experiment.add_image('reconstruction', grid_pred, self.current_epoch)
         self.logger.experiment.add_image('difference', grid_diff, self.current_epoch)
 
         self.log('avg_val_loss', val_loss)
 
     def train_dataloader(self):
         data_transform = transforms.Compose([
-            transforms.ToTensor()
+            seq.augment_image,
+            transforms.ToTensor(),
+        ])
+        target_transform = transforms.Compose([
+            transforms.ToTensor(),
         ])
         dataset = ImageFolderAutoEncoder(root='../datasets/autoencoder/train',
                                          transform=data_transform,
-                                         target_transform=data_transform)
+                                         target_transform=target_transform)
         # dataload same for in and out
         train_loader = torch.utils.data.DataLoader(dataset, batch_size=self.hparams.batch_size, shuffle=True,
-                                             num_workers=self.hparams.num_workers)
+                                             num_workers=self.hparams.num_workers, pin_memory=True)
         return train_loader
 
     def val_dataloader(self):
         # dataload same for in and out
         data_transform = transforms.Compose([
-            transforms.ToTensor()
+            seq.augment_image,
+            transforms.ToTensor(),
+        ])
+        target_transform = transforms.Compose([
+            transforms.ToTensor(),
         ])
         dataset = ImageFolderAutoEncoder(root='../datasets/autoencoder/val', transform=data_transform,
-                                         target_transform=data_transform)
+                                         target_transform=target_transform)
         # dataload same for in and out
         val_loader = torch.utils.data.DataLoader(dataset, batch_size=self.hparams.batch_size,
-                                                 num_workers=self.hparams.num_workers)
+                                                 num_workers=self.hparams.num_workers, pin_memory=True)
         return val_loader
 
 
@@ -204,7 +230,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--learning_rate', default=6e-4, type=float)
+    parser.add_argument('--learning_rate', default=3e-4, type=float)
     parser.add_argument('--num_workers', default=6, type=int)
     parser.add_argument('--one_cycle_div_factor', default=25, type=int)
 
@@ -213,7 +239,7 @@ if __name__ == '__main__':
     vae = ConvAutoencoder5Logits(hparams=args)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(vae)
-    # lr_finder = trainer.tuner.lr_find(vae, max_lr=1e-3, min_lr=1e-6)
+    # lr_finder = trainer.tuner.lr_find(vae, max_lr=5e-4, min_lr=1e-6)
     #
     # # Results can be found in
     # lr_finder.results

@@ -5,6 +5,7 @@ from PIL import Image
 import os
 import os.path
 from typing import Any, Callable, cast, Dict, List, Optional, Tuple
+import cv2
 
 def make_dataset(
     directory: str,
@@ -113,9 +114,10 @@ IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tif
 
 def pil_loader(path: str) -> Image.Image:
     # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
-    with open(path, 'rb') as f:
-        img = Image.open(f)
-        return img.convert('RGB')
+    # with open(path, 'rb') as f:
+    #     img = Image.open(f)
+    #     return img.convert('RGB')
+    return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
 
 
 # TODO: specify the return type
